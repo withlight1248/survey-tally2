@@ -1,7 +1,7 @@
 {
   "name": "survey-tally2",
   "private": true,
-  "description": "브라우저 게임 모음 (오목, 옷입히기). 게임마다 index.html 한 장. 의존성 없음.",
+  "description": "브라우저 게임 모음 (오목, 옷입히기, 식단 볼). 게임마다 index.html 한 장. 의존성 없음.",
   "scripts": {
     "test": "node --test"
   }

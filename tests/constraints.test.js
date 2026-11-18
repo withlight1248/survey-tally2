@@ -12,7 +12,8 @@ const ROOT = path.join(__dirname, '..');
 // 점검할 페이지. logicBlocks는 화면을 쓰지 않아야 하는 순수 블록들이다.
 const PAGES = [
   { label: '오목', file: 'index.html', logicBlocks: ['omok-logic'] },
-  { label: '옷입히기', file: 'dress-up/index.html', logicBlocks: ['outfit-logic', 'dress-art'] }
+  { label: '옷입히기', file: 'dress-up/index.html', logicBlocks: ['outfit-logic', 'dress-art'] },
+  { label: '식단 볼', file: 'diet-bowl/index.html', logicBlocks: ['diet-logic'] }
 ];
 
 // SVG를 만들 때 필요한 이름표(네임스페이스). 인터넷 주소처럼 생겼지만 어디에도 접속하지 않는
