@@ -1,0 +1,8 @@
+{
+  "name": "survey-tally2",
+  "private": true,
+  "description": "설문 집계기 (index.html 한 장). 의존성 없음.",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
