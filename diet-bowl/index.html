@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>식단 볼</title>
+</head>
+<body>
+<!-- 화면은 다음 커밋에서 추가한다. -->
+
+<script id="diet-logic">
+/*
+ * 식단 규칙과 음식 데이터. 화면을 전혀 쓰지 않는 순수 함수만 둔다.
+ * 시험(tests/)은 이 블록만 꺼내 Node에서 실행한다.
+ *
+ * 상태: { weight, active, meals: { lunch|snack|dinner: { items: { 음식아이디: 개수 }, done } } }
+ * 상태는 바꾸지 않고, 바뀔 때마다 새 상태를 돌려준다.
+ * 영양값은 모두 1회 제공량 기준이며 참고용 추정이다(diet-bowl/PLAN.md 4장).
+ */
+(function (root) {
+  'use strict';
+
+  /* ---------- 사람(고정값)과 목표 계산 상수 ---------- */
+  var HEIGHT_CM = 160;
+  var AGE = 22;
+  var ACTIVITY = 1.55;        // 주 3~4회 근력운동
+  var DEFICIT = 0.15;         // 하루 소비량의 15% 감량
+  var PROTEIN_PER_KG = 2.0;   // 체중 1kg당 단백질 g
+  var FAT_PER_KG = 0.8;       // 체중 1kg당 지방 g
+  var MIN_WEIGHT = 40;
+  var MAX_WEIGHT = 120;
+  var DEFAULT_WEIGHT = 60;
+
+  var MEALS = [
+    { id: 'lunch', name: '점심' },
+    { id: 'snack', name: '간식' },
+    { id: 'dinner', name: '저녁' }
+  ];
+
+  var CATEGORIES = [
+    { id: 'protein', name: '단백질' },
+    { id: 'carb', name: '탄수화물' },
+    { id: 'produce', name: '채소·과일' },
+    { id: 'extra', name: '견과·간식' }
+  ];
+
+  // kcal 열량, carb 탄수화물 g, protein 단백질 g, fat 지방 g (1회 제공량)
+  var FOODS = [
+    { id: 'egg-baked', name: '구운란', serving: '1개 (45g)', emoji: '🥚', category: 'protein', kcal: 73, carb: 0.4, protein: 6.3, fat: 5.0 },
+    { id: 'egg-white', name: '구운란 흰자', serving: '1개분', emoji: '🤍', category: 'protein', kcal: 17, carb: 0.2, protein: 3.6, fat: 0.1 },
+    { id: 'chicken', name: '닭가슴살', serving: '100g (익힌)', emoji: '🍗', category: 'protein', kcal: 165, carb: 0, protein: 31, fat: 3.6 },
+    { id: 'tofu', name: '두부', serving: '100g', emoji: '⬜', category: 'protein', kcal: 80, carb: 2, protein: 8, fat: 4.8 },
+    { id: 'salmon-sushi', name: '연어초밥', serving: '1피스', emoji: '🍣', category: 'protein', kcal: 50, carb: 8, protein: 2.5, fat: 1.0 },
+    { id: 'yogurt', name: '요거트', serving: '80g (플레인)', emoji: '🥣', category: 'protein', kcal: 50, carb: 4, protein: 3, fat: 2.5 },
+    { id: 'protein-drink', name: '단백질음료', serving: '1병 (단백질 20g)', emoji: '🥤', category: 'protein', kcal: 105, carb: 6, protein: 20, fat: 0.7 },
+    { id: 'milk', name: '우유', serving: '200ml', emoji: '🥛', category: 'protein', kcal: 130, carb: 10, protein: 6.6, fat: 7.0 },
+
+    { id: 'rice', name: '밥', serving: '1공기 (210g)', emoji: '🍚', category: 'carb', kcal: 300, carb: 66, protein: 5.5, fat: 0.6 },
+    { id: 'sweet-potato', name: '고구마', serving: '1개 (150g, 찐)', emoji: '🍠', category: 'carb', kcal: 190, carb: 45, protein: 2, fat: 0.3 },
+    { id: 'oatmeal', name: '오트밀', serving: '40g', emoji: '🌾', category: 'carb', kcal: 150, carb: 27, protein: 5, fat: 3 },
+    { id: 'banana', name: '바나나', serving: '1개', emoji: '🍌', category: 'carb', kcal: 90, carb: 23, protein: 1.1, fat: 0.3 },
+    { id: 'buldak-cup', name: '불닭볶음면 소컵', serving: '1컵 (70g)', emoji: '🌶️', category: 'carb', kcal: 280, carb: 42, protein: 6, fat: 10 },
+    { id: 'jin-cup', name: '진라면 소컵', serving: '1컵 (65g)', emoji: '🍜', category: 'carb', kcal: 280, carb: 43, protein: 6, fat: 9 },
+
+    { id: 'berries', name: '후레쉬베리', serving: '100g', emoji: '🍓', category: 'produce', kcal: 45, carb: 10.5, protein: 0.8, fat: 0.3 },
+    { id: 'salad', name: '샐러드 채소', serving: '100g', emoji: '🥬', category: 'produce', kcal: 20, carb: 3.5, protein: 1.5, fat: 0.2 },
+    { id: 'broccoli', name: '브로콜리', serving: '100g', emoji: '🥦', category: 'produce', kcal: 34, carb: 7, protein: 2.8, fat: 0.4 },
+
+    { id: 'nuts', name: '하루견과', serving: '1봉 (20g)', emoji: '🥜', category: 'extra', kcal: 110, carb: 8, protein: 3, fat: 8 },
+    { id: 'avocado', name: '아보카도', serving: '1/2개 (100g)', emoji: '🥑', category: 'extra', kcal: 160, carb: 8.5, protein: 2, fat: 14.7 },
+    { id: 'chocolate', name: '초콜릿', serving: '1조각 (다크 10g)', emoji: '🍫', category: 'extra', kcal: 60, carb: 4.6, protein: 0.8, fat: 4.3 }
+  ];
+
+  function findFood(id) {
+    for (var i = 0; i < FOODS.length; i++) {
+      if (FOODS[i].id === id) return FOODS[i];
+    }
+    return null;
+  }
+
+  function foodsOf(categoryId) {
+    return FOODS.filter(function (food) { return food.category === categoryId; });
+  }
+
+  function isMeal(id) {
+    for (var i = 0; i < MEALS.length; i++) {
+      if (MEALS[i].id === id) return true;
+    }
+    return false;
+  }
+
+  /* ---------- 섭취 목표 ---------- */
+
+  /** 체중으로 쓸 수 있는 값인지 (숫자이고 40~120kg). */
+  function isValidWeight(weight) {
+    return typeof weight === 'number' && isFinite(weight) && weight >= MIN_WEIGHT && weight <= MAX_WEIGHT;
+  }
+
+  /**
+   * 160cm·22세 여성의 하루 섭취 목표 (근육 증가 + 지방 감소).
+   * 기초대사량(Mifflin-St Jeor) × 활동계수 × (1 − 감량폭)을 열량으로 하고,
+   * 단백질은 체중 1kg당 2.0g, 지방은 0.8g, 탄수화물은 남는 열량으로 채운다.
+   * 체중이 범위(40~120kg) 밖이면 null.
+   */
+  function targets(weight) {
+    if (!isValidWeight(weight)) return null;
+    var bmr = 10 * weight + 6.25 * HEIGHT_CM - 5 * AGE - 161;
+    var tdee = bmr * ACTIVITY;
+    var kcal = Math.round(tdee * (1 - DEFICIT) / 10) * 10;
+    var protein = Math.round(PROTEIN_PER_KG * weight);
+    var fat = Math.round(FAT_PER_KG * weight);
+    var carb = Math.round((kcal - 4 * protein - 9 * fat) / 4);
+    return {
+      bmr: Math.round(bmr),
+      tdee: Math.round(tdee),
+      kcal: kcal,
+      carb: carb,
+      protein: protein,
+      fat: fat
+    };
+  }
+
+  /* ---------- 상태 ---------- */
+
+  function emptyMeals() {
+    var meals = {};
+    MEALS.forEach(function (meal) { meals[meal.id] = { items: {}, done: false }; });
+    return meals;
+  }
+
+  /** 새 하루. 체중이 올바르지 않으면 기본값(60kg)으로 시작한다. */
+  function newDay(weight) {
+    return {
+      weight: isValidWeight(weight) ? weight : DEFAULT_WEIGHT,
+      active: MEALS[0].id,
+      meals: emptyMeals()
+    };
+  }
+
+  function copyState(state, changes) {
+    var next = { weight: state.weight, active: state.active, meals: {} };
+    MEALS.forEach(function (meal) {
+      next.meals[meal.id] = state.meals[meal.id];
+    });
+    for (var key in changes) {
+      if (key === 'meals') {
+        for (var mealId in changes.meals) next.meals[mealId] = changes.meals[mealId];
+      } else {
+        next[key] = changes[key];
+      }
+    }
+    return next;
+  }
+
+  function copyItems(items) {
+    var out = {};
+    for (var id in items) out[id] = items[id];
+    return out;
+  }
+
+  function setWeight(state, weight) {
+    if (!isValidWeight(weight)) return state;
+    return copyState(state, { weight: weight });
+  }
+
+  function selectMeal(state, mealId) {
+    if (!isMeal(mealId)) return state;
+    return copyState(state, { active: mealId });
+  }
+
+  /** 볼에 음식을 1회 제공량 담는다. 같은 음식을 여러 번 담을 수 있다. 완성한 볼에는 담을 수 없다. */
+  function addFood(state, mealId, foodId) {
+    if (!isMeal(mealId) || !findFood(foodId)) return state;
+    var meal = state.meals[mealId];
+    if (meal.done) return state;
+    var items = copyItems(meal.items);
+    items[foodId] = (items[foodId] || 0) + 1;
+    var changes = { meals: {} };
+    changes.meals[mealId] = { items: items, done: false };
+    return copyState(state, changes);
+  }
+
+  /** 볼에서 음식을 1회 제공량 뺀다. 없는 음식이거나 완성한 볼이면 그대로. */
+  function removeFood(state, mealId, foodId) {
+    if (!isMeal(mealId)) return state;
+    var meal = state.meals[mealId];
+    if (meal.done || !meal.items[foodId]) return state;
+    var items = copyItems(meal.items);
+    if (items[foodId] <= 1) {
+      delete items[foodId];
+    } else {
+      items[foodId] -= 1;
+    }
+    var changes = { meals: {} };
+    changes.meals[mealId] = { items: items, done: false };
+    return copyState(state, changes);
+  }
+
+  /** 볼을 비운다. 완성한 볼은 먼저 다시 담기를 해야 한다. */
+  function clearMeal(state, mealId) {
+    if (!isMeal(mealId)) return state;
+    var meal = state.meals[mealId];
+    if (meal.done || itemCount(meal) === 0) return state;
+    var changes = { meals: {} };
+    changes.meals[mealId] = { items: {}, done: false };
+    return copyState(state, changes);
+  }
+
+  /** 볼에 담긴 음식의 총 개수(1회 제공량 단위). */
+  function itemCount(meal) {
+    var n = 0;
+    for (var id in meal.items) n += meal.items[id];
+    return n;
+  }
+
+  /**
+   * 볼을 완성한다. 음식이 하나도 없으면 완성할 수 없다.
+   * 완성하면 선택된 볼이 다음 빈 볼(점심 → 간식 → 저녁 순환)로 넘어간다. 빈 볼이 없으면 그대로.
+   */
+  function completeMeal(state, mealId) {
+    if (!isMeal(mealId)) return state;
+    var meal = state.meals[mealId];
+    if (meal.done || itemCount(meal) === 0) return state;
+    var changes = { meals: {} };
+    changes.meals[mealId] = { items: copyItems(meal.items), done: true };
+    var next = copyState(state, changes);
+
+    var start = 0;
+    for (var i = 0; i < MEALS.length; i++) {
+      if (MEALS[i].id === mealId) start = i;
+    }
+    for (var step = 1; step <= MEALS.length; step++) {
+      var candidate = MEALS[(start + step) % MEALS.length].id;
+      if (!next.meals[candidate].done) {
+        next.active = candidate;
+        break;
+      }
+    }
+    return next;
+  }
+
+  /** 완성한 볼을 다시 열어 고칠 수 있게 한다. 열린 볼이 선택된다. */
+  function reopenMeal(state, mealId) {
+    if (!isMeal(mealId)) return state;
+    var meal = state.meals[mealId];
+    if (!meal.done) return state;
+    var changes = { meals: {}, active: mealId };
+    changes.meals[mealId] = { items: copyItems(meal.items), done: false };
+    return copyState(state, changes);
+  }
+
+  /* ---------- 계산 ---------- */
+
+  function tenths(value) { return Math.round(value * 10); }
+
+  /**
+   * 음식 개수 목록의 영양 합계. 소수 오차를 피하려고 0.1g 단위 정수로 더한다.
+   * 반환: { kcal(정수), carb, protein, fat (소수 첫째 자리) }
+   */
+  function totalsOfItems(items) {
+    var kcal = 0;
+    var carb = 0;
+    var protein = 0;
+    var fat = 0;
+    for (var id in items) {
+      var food = findFood(id);
+      if (!food) continue;
+      var n = items[id];
+      kcal += food.kcal * n;
+      carb += tenths(food.carb) * n;
+      protein += tenths(food.protein) * n;
+      fat += tenths(food.fat) * n;
+    }
+    return { kcal: Math.round(kcal), carb: carb / 10, protein: protein / 10, fat: fat / 10 };
+  }
+
+  /** 볼 하나의 영양 합계 (완성 여부와 관계없이 지금 담긴 음식 기준). */
+  function mealTotals(meal) {
+    return totalsOfItems(meal.items);
+  }
+
+  /** 하루 합계. 완성한 볼만 더한다. 반환에 완성한 볼 수(meals)가 들어 있다. */
+  function dayTotals(state) {
+    var kcal = 0;
+    var carb = 0;
+    var protein = 0;
+    var fat = 0;
+    var meals = 0;
+    MEALS.forEach(function (m) {
+      var meal = state.meals[m.id];
+      if (!meal.done) return;
+      var t = mealTotals(meal);
+      kcal += t.kcal;
+      carb += tenths(t.carb);
+      protein += tenths(t.protein);
+      fat += tenths(t.fat);
+      meals += 1;
+    });
+    return { kcal: kcal, carb: carb / 10, protein: protein / 10, fat: fat / 10, meals: meals };
+  }
+
+  /**
+   * 합계와 목표를 견준다. 항목마다 { value, target, percent, remaining }.
+   * remaining은 목표까지 남은 양이고 목표를 넘으면 음수(초과량).
+   */
+  function compare(totals, goal) {
+    function one(value, target, digits) {
+      var factor = digits === 1 ? 10 : 1;
+      return {
+        value: value,
+        target: target,
+        percent: target > 0 ? Math.round(value / target * 100) : 0,
+        remaining: Math.round((target - value) * factor) / factor
+      };
+    }
+    return {
+      kcal: one(totals.kcal, goal.kcal, 0),
+      carb: one(totals.carb, goal.carb, 1),
+      protein: one(totals.protein, goal.protein, 1),
+      fat: one(totals.fat, goal.fat, 1)
+    };
+  }
+
+  root.Diet = {
+    HEIGHT_CM: HEIGHT_CM,
+    AGE: AGE,
+    ACTIVITY: ACTIVITY,
+    DEFICIT: DEFICIT,
+    PROTEIN_PER_KG: PROTEIN_PER_KG,
+    FAT_PER_KG: FAT_PER_KG,
+    MIN_WEIGHT: MIN_WEIGHT,
+    MAX_WEIGHT: MAX_WEIGHT,
+    DEFAULT_WEIGHT: DEFAULT_WEIGHT,
+    MEALS: MEALS,
+    CATEGORIES: CATEGORIES,
+    FOODS: FOODS,
+    findFood: findFood,
+    foodsOf: foodsOf,
+    isValidWeight: isValidWeight,
+    targets: targets,
+    newDay: newDay,
+    setWeight: setWeight,
+    selectMeal: selectMeal,
+    addFood: addFood,
+    removeFood: removeFood,
+    clearMeal: clearMeal,
+    itemCount: itemCount,
+    completeMeal: completeMeal,
+    reopenMeal: reopenMeal,
+    mealTotals: mealTotals,
+    dayTotals: dayTotals,
+    compare: compare
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+</body>
+</html>
