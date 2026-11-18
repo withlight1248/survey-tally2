@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>설문 집계기</title>
+</head>
+<body>
+<!-- 화면은 다음 커밋에서 추가한다. -->
+
+<script id="tally-logic">
+/*
+ * 계산 로직. 화면(document, window 등)을 전혀 쓰지 않는 순수 함수만 둔다.
+ * 시험(tests/)은 이 블록만 꺼내 Node에서 실행한다.
+ */
+(function (root) {
+  'use strict';
+
+  var VALID_VALUES = ['1', '2', '3', '4', '5'];
+
+  /**
+   * 엑셀에서 복사한 글(탭으로 칸, 줄바꿈으로 줄)을 칸 배열의 배열로 나눈다.
+   * 칸이 따옴표로 시작하면 그 안의 탭·줄바꿈은 글자로 읽고, "" 는 " 하나로 읽는다.
+   */
+  function parseTsv(text) {
+    text = String(text == null ? '' : text);
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+    var rows = [];
+    var row = [];
+    var field = '';
+    var inQuotes = false;
+    var atFieldStart = true;
+    var i = 0;
+    var n = text.length;
+    var c;
+
+    while (i < n) {
+      c = text.charAt(i);
+      if (inQuotes) {
+        if (c === '"') {
+          if (text.charAt(i + 1) === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false;
+          i += 1;
+          continue;
+        }
+        field += c;
+        i += 1;
+        continue;
+      }
+      if (c === '"' && atFieldStart) {
+        inQuotes = true;
+        atFieldStart = false;
+        i += 1;
+        continue;
+      }
+      if (c === '\t') {
+        row.push(field);
+        field = '';
+        atFieldStart = true;
+        i += 1;
+        continue;
+      }
+      if (c === '\n' || c === '\r') {
+        if (c === '\r' && text.charAt(i + 1) === '\n') i += 1;
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        atFieldStart = true;
+        i += 1;
+        continue;
+      }
+      field += c;
+      atFieldStart = false;
+      i += 1;
+    }
+    if (field !== '' || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  /**
+   * 칸 하나를 판정한다. 앞뒤 공백을 지운 값으로 본다.
+   * 'valid' (1~5), 'blank' (비었거나 공백뿐, 칸이 없는 경우 포함), 'excluded' (그 밖).
+   */
+  function classifyCell(cell) {
+    if (cell === undefined || cell === null) return 'blank';
+    var t = String(cell).trim();
+    if (t === '') return 'blank';
+    if (VALID_VALUES.indexOf(t) !== -1) return 'valid';
+    return 'excluded';
+  }
+
+  /**
+   * 평균 문자열. 유효 응답의 합 ÷ 유효 응답 수를 소수 셋째 자리에서 반올림(0.5는 올림)해
+   * 둘째 자리까지. 유효가 0이면 '-'. 부동소수점 오차를 피하려고 정수로만 계산한다.
+   */
+  function formatAverage(sum, count) {
+    if (count === 0) return '-';
+    var hundredths = Math.floor((2 * sum * 100 + count) / (2 * count));
+    var whole = Math.floor(hundredths / 100);
+    var frac = hundredths % 100;
+    return whole + '.' + (frac < 10 ? '0' : '') + frac;
+  }
+
+  function isEmptyRow(row) {
+    for (var i = 0; i < row.length; i++) {
+      if (String(row[i]).trim() !== '') return false;
+    }
+    return true;
+  }
+
+  /**
+   * 붙여넣은 글 전체를 집계한다.
+   * 반환: { respondents: 응답자 수, questions: [{ name, valid, average, blank, excluded }] }
+   * 첫 줄은 머리글, 첫 열(응답번호)은 집계하지 않는다.
+   * 모든 칸이 빈 줄은 건너뛴다. 머리글보다 많은 칸은 무시한다.
+   */
+  function tally(text) {
+    var rows = parseTsv(text).filter(function (r) { return !isEmptyRow(r); });
+    if (rows.length === 0) return { respondents: 0, questions: [] };
+
+    var header = rows[0];
+    var data = rows.slice(1);
+    var questions = [];
+
+    for (var col = 1; col < header.length; col++) {
+      var valid = 0;
+      var sum = 0;
+      var blank = 0;
+      var excluded = 0;
+      for (var r = 0; r < data.length; r++) {
+        var cell = data[r][col];
+        var kind = classifyCell(cell);
+        if (kind === 'valid') {
+          valid += 1;
+          sum += Number(String(cell).trim());
+        } else if (kind === 'blank') {
+          blank += 1;
+        } else {
+          excluded += 1;
+        }
+      }
+      questions.push({
+        name: String(header[col]).trim(),
+        valid: valid,
+        average: formatAverage(sum, valid),
+        blank: blank,
+        excluded: excluded
+      });
+    }
+    return { respondents: data.length, questions: questions };
+  }
+
+  root.SurveyTally = {
+    parseTsv: parseTsv,
+    classifyCell: classifyCell,
+    formatAverage: formatAverage,
+    tally: tally
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+</body>
+</html>
