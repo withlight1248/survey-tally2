@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>오목 10×10</title>
+</head>
+<body>
+<!-- 화면은 다음 커밋에서 추가한다. -->
+
+<script id="omok-logic">
+/*
+ * 오목 규칙. 화면을 전혀 쓰지 않는 순수 함수만 둔다.
+ * 시험(tests/)은 이 블록만 꺼내 Node에서 실행한다.
+ *
+ * 상태는 바꾸지 않고, 수를 둘 때마다 새 상태를 돌려준다.
+ * 상태: { size, board, turn, winner, winLine, draw, moves }
+ *   board[행][열]: 0 빈칸, 1 흑, 2 백
+ *   turn: 다음에 둘 차례(1 또는 2). 승부가 나면 마지막에 둔 쪽에서 멈춘다.
+ *   winner: 0 없음, 1 흑, 2 백
+ *   winLine: 이긴 줄의 칸들 [[행, 열], ...] 또는 null
+ *   moves: 둔 순서 [[행, 열, 색], ...]
+ */
+(function (root) {
+  'use strict';
+
+  var EMPTY = 0;
+  var BLACK = 1;
+  var WHITE = 2;
+  var WIN_LENGTH = 5;
+  var DEFAULT_SIZE = 10;
+  // 가로, 세로, 대각선(↘), 대각선(↙)
+  var DIRECTIONS = [[0, 1], [1, 0], [1, 1], [1, -1]];
+
+  function emptyBoard(size) {
+    var board = [];
+    for (var r = 0; r < size; r++) {
+      var row = [];
+      for (var c = 0; c < size; c++) row.push(EMPTY);
+      board.push(row);
+    }
+    return board;
+  }
+
+  function inside(size, r, c) {
+    return r >= 0 && r < size && c >= 0 && c < size;
+  }
+
+  /**
+   * (r, c)에 놓인 돌을 지나 같은 색이 다섯 개 이상 이어진 줄을 찾는다.
+   * 있으면 그 줄의 칸들을, 없으면 null을 돌려준다. 가장 긴 줄 하나만 돌려준다.
+   */
+  function findWinLine(board, r, c) {
+    var size = board.length;
+    var color = board[r][c];
+    if (color === EMPTY) return null;
+
+    var best = null;
+    for (var d = 0; d < DIRECTIONS.length; d++) {
+      var dr = DIRECTIONS[d][0];
+      var dc = DIRECTIONS[d][1];
+      var line = [[r, c]];
+
+      var rr = r - dr;
+      var cc = c - dc;
+      while (inside(size, rr, cc) && board[rr][cc] === color) {
+        line.unshift([rr, cc]);
+        rr -= dr;
+        cc -= dc;
+      }
+      rr = r + dr;
+      cc = c + dc;
+      while (inside(size, rr, cc) && board[rr][cc] === color) {
+        line.push([rr, cc]);
+        rr += dr;
+        cc += dc;
+      }
+      if (line.length >= WIN_LENGTH && (best === null || line.length > best.length)) {
+        best = line;
+      }
+    }
+    return best;
+  }
+
+  /** 수 목록 [[행, 열], ...]을 처음부터 차례로 두어 상태를 만든다. */
+  function replay(size, moves) {
+    var board = emptyBoard(size);
+    var turn = BLACK;
+    var winner = 0;
+    var winLine = null;
+    var applied = [];
+
+    for (var i = 0; i < moves.length; i++) {
+      var r = moves[i][0];
+      var c = moves[i][1];
+      board[r][c] = turn;
+      applied.push([r, c, turn]);
+      var line = findWinLine(board, r, c);
+      if (line) {
+        winner = turn;
+        winLine = line;
+        break;
+      }
+      turn = turn === BLACK ? WHITE : BLACK;
+    }
+    return {
+      size: size,
+      board: board,
+      turn: turn,
+      winner: winner,
+      winLine: winLine,
+      draw: winner === 0 && applied.length === size * size,
+      moves: applied
+    };
+  }
+
+  function newGame(size) {
+    return replay(size === undefined ? DEFAULT_SIZE : size, []);
+  }
+
+  function movesOf(state) {
+    return state.moves.map(function (m) { return [m[0], m[1]]; });
+  }
+
+  /**
+   * (r, c)에 현재 차례의 돌을 둔다.
+   * 성공: { ok: true, state: 새 상태 }
+   * 실패: { ok: false, reason: 'finished' | 'out-of-range' | 'occupied', state: 원래 상태 }
+   */
+  function place(state, r, c) {
+    if (state.winner !== 0 || state.draw) {
+      return { ok: false, reason: 'finished', state: state };
+    }
+    if (typeof r !== 'number' || typeof c !== 'number' ||
+        !Number.isInteger(r) || !Number.isInteger(c) || !inside(state.size, r, c)) {
+      return { ok: false, reason: 'out-of-range', state: state };
+    }
+    if (state.board[r][c] !== EMPTY) {
+      return { ok: false, reason: 'occupied', state: state };
+    }
+    var moves = movesOf(state);
+    moves.push([r, c]);
+    return { ok: true, state: replay(state.size, moves) };
+  }
+
+  /** 마지막 한 수를 되돌린 새 상태. 둔 수가 없으면 원래 상태를 그대로 돌려준다. */
+  function undo(state) {
+    if (state.moves.length === 0) return state;
+    var moves = movesOf(state);
+    moves.pop();
+    return replay(state.size, moves);
+  }
+
+  root.Omok = {
+    EMPTY: EMPTY,
+    BLACK: BLACK,
+    WHITE: WHITE,
+    WIN_LENGTH: WIN_LENGTH,
+    newGame: newGame,
+    place: place,
+    undo: undo,
+    findWinLine: findWinLine
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+</body>
+</html>
