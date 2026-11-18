@@ -100,7 +100,14 @@ test('음식: 요청한 음식이 모두 있고 1회 제공량이 맞다', () =>
     '연어초밥': /1피스/,
     '불닭볶음면 소컵': /소컵|1컵/,
     '진라면 소컵': /1컵/,
-    '후레쉬베리': /./,
+    '후레쉬베리': /28g/,
+    '현미밥': /130g/,
+    '삼겹살': /100g/,
+    '안심돈가스': /./,
+    '쌀국수': /1그릇/,
+    '미니단호박': /1\/4/,
+    '김치': /./,
+    '초코 휘낭시에': /1개/,
     '초콜릿': /1조각/
   };
   for (const [name, serving] of Object.entries(expectServing)) {
@@ -112,7 +119,7 @@ test('음식: 요청한 음식이 모두 있고 1회 제공량이 맞다', () =>
 });
 
 test('음식: 기본 식재료도 있다 (닭가슴살, 밥, 고구마, 두부 등)', () => {
-  for (const name of ['닭가슴살', '밥', '고구마', '두부', '브로콜리', '바나나', '오트밀', '우유', '아보카도']) {
+  for (const name of ['닭가슴살', '현미밥', '고구마', '두부', '브로콜리', '바나나', '오트밀', '우유', '아보카도']) {
     assert.ok(FOODS.some((f) => f.name === name), name);
   }
   assert.ok(FOODS.length >= 15);
@@ -299,12 +306,12 @@ test('완성: 이전 상태를 바꾸지 않는다', () => {
 
 /* ---------- 계산 ---------- */
 
-const LUNCH = ['rice', 'chicken', 'chicken', 'broccoli'];   // 밥 + 닭가슴살 ×2 + 브로콜리
+const LUNCH = ['rice', 'chicken', 'chicken', 'broccoli'];   // 현미밥 + 닭가슴살 ×2 + 브로콜리
 const SNACK = ['egg-baked', 'egg-baked', 'nuts'];            // 구운란 ×2 + 하루견과
 
 test('볼 합계: 음식 값의 합 (열량 정수, 탄단지 소수 첫째 자리)', () => {
   const s = addAll(newDay(), 'lunch', LUNCH);
-  assert.deepEqual(plain(mealTotals(s.meals.lunch)), { kcal: 664, carb: 73, protein: 70.3, fat: 8.2 });
+  assert.deepEqual(plain(mealTotals(s.meals.lunch)), { kcal: 559, carb: 50, protein: 68.8, fat: 9 });
   const s2 = addAll(newDay(), 'snack', SNACK);
   assert.deepEqual(plain(mealTotals(s2.meals.snack)), { kcal: 256, carb: 8.8, protein: 15.6, fat: 18 });
 });
@@ -320,9 +327,9 @@ test('볼 합계: 소수 오차가 없다 (0.1g 단위를 여러 번 더해도)'
   for (let i = 0; i < 10; i++) s = addFood(s, 'snack', 'chocolate'); // 탄수 4.6 × 10
   assert.deepEqual(plain(mealTotals(s.meals.snack)), { kcal: 600, carb: 46, protein: 8, fat: 43 });
   let t = newDay();
-  for (let i = 0; i < 7; i++) t = addFood(t, 'dinner', 'berries');   // 10.5 × 7, 0.3 × 7
-  assert.equal(mealTotals(t.meals.dinner).carb, 73.5);
-  assert.equal(mealTotals(t.meals.dinner).fat, 2.1);
+  for (let i = 0; i < 7; i++) t = addFood(t, 'dinner', 'kimchi');    // 탄수 1.7 × 7, 지방 0.1 × 7
+  assert.equal(mealTotals(t.meals.dinner).carb, 11.9);
+  assert.equal(mealTotals(t.meals.dinner).fat, 0.7);
 });
 
 test('볼 합계: 서로 다른 모든 음식을 한 번씩 담으면 음식 값 전체의 합', () => {
@@ -341,9 +348,9 @@ test('하루 합계: 완성한 볼만 더한다', () => {
   s = addAll(s, 'snack', SNACK);
   assert.deepEqual(plain(dayTotals(s)), { kcal: 0, carb: 0, protein: 0, fat: 0, meals: 0 });
   s = completeMeal(s, 'lunch');
-  assert.deepEqual(plain(dayTotals(s)), { kcal: 664, carb: 73, protein: 70.3, fat: 8.2, meals: 1 });
+  assert.deepEqual(plain(dayTotals(s)), { kcal: 559, carb: 50, protein: 68.8, fat: 9, meals: 1 });
   s = completeMeal(s, 'snack');
-  assert.deepEqual(plain(dayTotals(s)), { kcal: 920, carb: 81.8, protein: 85.9, fat: 26.2, meals: 2 });
+  assert.deepEqual(plain(dayTotals(s)), { kcal: 815, carb: 58.8, protein: 84.4, fat: 27, meals: 2 });
   s = reopenMeal(s, 'lunch');
   assert.deepEqual(plain(dayTotals(s)), { kcal: 256, carb: 8.8, protein: 15.6, fat: 18, meals: 1 });
 });
@@ -354,21 +361,21 @@ test('목표 비교: 남은 양과 퍼센트 (60kg 목표)', () => {
   s = completeMeal(completeMeal(s, 'lunch'), 'snack');
   const c = compare(dayTotals(s), targets(60));
   assert.deepEqual(plain(c), {
-    kcal: { value: 920, target: 1750, percent: 53, remaining: 830 },
-    carb: { value: 81.8, target: 210, percent: 39, remaining: 128.2 },
-    protein: { value: 85.9, target: 120, percent: 72, remaining: 34.1 },
-    fat: { value: 26.2, target: 48, percent: 55, remaining: 21.8 }
+    kcal: { value: 815, target: 1750, percent: 47, remaining: 935 },
+    carb: { value: 58.8, target: 210, percent: 28, remaining: 151.2 },
+    protein: { value: 84.4, target: 120, percent: 70, remaining: 35.6 },
+    fat: { value: 27, target: 48, percent: 56, remaining: 21 }
   });
 });
 
 test('목표 비교: 목표를 넘으면 남은 양이 음수(초과량)', () => {
   let s = newDay();
-  for (let i = 0; i < 7; i++) s = addFood(s, 'dinner', 'rice'); // 2100kcal
+  for (let i = 0; i < 10; i++) s = addFood(s, 'dinner', 'rice'); // 1950kcal
   s = completeMeal(s, 'dinner');
   const c = compare(dayTotals(s), targets(60));
-  assert.equal(c.kcal.value, 2100);
-  assert.equal(c.kcal.remaining, -350);
-  assert.equal(c.kcal.percent, 120);
+  assert.equal(c.kcal.value, 1950);
+  assert.equal(c.kcal.remaining, -200);
+  assert.equal(c.kcal.percent, 111);
   assert.ok(c.carb.remaining < 0);
 });
 
