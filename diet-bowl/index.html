@@ -14,20 +14,48 @@
   .profile input { width: 64px; padding: 3px 6px; font: inherit; border: 1px solid #c9b595; border-radius: 6px; }
   .goal { margin-top: 6px; font-size: 13px; background: #fffaf0; border: 1px solid #e3d3b5; border-radius: 8px; padding: 6px 10px; }
   main { max-width: 1000px; margin: 0 auto; padding: 8px 16px 24px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-  @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) {
+    header { padding: 10px 10px 4px; }
+    h1 { font-size: 18px; }
+    .profile { font-size: 12px; }
+    .goal { font-size: 11px; padding: 5px 8px; }
+    main { grid-template-columns: 47% 1fr; gap: 6px; padding: 4px 6px 8px; }
+    .meal { margin-bottom: 6px; padding: 4px 2px 6px; }
+    .meal .label { font-size: 13px; margin: 0 2px 2px; }
+    .bowl .opening { min-height: 70px; padding: 6px 10px; border-width: 4px; }
+    .bowl .belly { height: 56px; margin-top: -34px; }
+    .pile { font-size: 19px; }
+    .chip { font-size: 11px; padding: 1px 6px; }
+    button.act { font-size: 12px; padding: 6px 10px; }
+    .result { font-size: 11px; padding: 6px 8px; }
+    .result .kcal { font-size: 14px; }
+    .shelf { padding: 6px; position: sticky; top: 4px; max-height: calc(100dvh - 8px); overflow-y: auto; }
+    .shelf .cat { padding: 6px; margin-bottom: 6px; }
+    .shelf .foods { grid-template-columns: repeat(2, 1fr); gap: 5px; }
+    .food { padding: 5px 2px; }
+    .food .e { font-size: 24px; }
+    .food .n { font-size: 11px; }
+    .food .s { font-size: 9px; }
+    .foot-wrap { padding: 0 6px 16px; }
+  }
   h2 { font-size: 15px; margin: 0 0 8px; }
-  .meal { margin-bottom: 14px; cursor: pointer; }
+  .meal { margin-bottom: 14px; cursor: pointer; padding: 6px 4px 8px; border-radius: 14px; }
+  .meal.active { background: rgba(255, 204, 77, .22); }
   .meal .label { font-weight: 700; font-size: 15px; margin: 0 4px 4px; display: flex; justify-content: space-between; align-items: center; }
   .meal .state { font-size: 12px; font-weight: 400; color: #8a7358; }
-  .bowl { position: relative; min-height: 120px; padding: 10px 14px 22px; border: 3px solid #7a4e2a; border-radius: 14px 14px 70px 70px / 14px 14px 46px 46px; background: linear-gradient(180deg, #d9a566 0%, #c58a4a 60%, #a8702f 100%); box-shadow: inset 0 6px 0 #b97d3d, 0 3px 0 #6b4220; }
-  .meal.active .bowl { outline: 4px solid #ffcc4d; outline-offset: 2px; }
-  .meal.done .bowl { background: linear-gradient(180deg, #e8be82 0%, #d4a05a 60%, #b98440 100%); }
-  .pile { min-height: 44px; font-size: 24px; line-height: 1.15; text-align: center; background: #fff6e5; border-radius: 10px; padding: 6px; word-break: break-all; }
-  .pile .empty { font-size: 13px; color: #a08a6a; }
-  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .bowl { position: relative; margin: 0 auto; width: 100%; max-width: 340px; }
+  .bowl .opening { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; min-height: 92px; padding: 8px 16px; border-radius: 50% / 42%; border: 5px solid #e0b074; background: radial-gradient(ellipse at 50% 35%, #e9c892 0%, #c98f4f 55%, #8c5a2b 100%); box-shadow: inset 0 8px 12px rgba(60, 30, 5, .45), 0 2px 0 #8a5524; }
+  .bowl .belly { position: relative; z-index: 1; height: 78px; margin: -46px 3% 0; border-radius: 0 0 50% 50% / 0 0 100% 100%; border: 4px solid #6b4220; border-top: 0; background: linear-gradient(180deg, #c98f4f 0%, #a8702f 55%, #86531f 100%); box-shadow: inset -10px -8px 0 rgba(60, 30, 5, .18), inset 10px 0 0 rgba(255, 220, 160, .18); }
+  .bowl .foot { width: 34%; height: 9px; margin: -1px auto 0; border-radius: 0 0 10px 10px; background: #6b4220; }
+  .meal.active .bowl .opening { border-color: #ffcc4d; }
+  .meal.done .bowl .opening { border-color: #9fd18f; }
+  .meal.done .state { color: #2f6e35; font-weight: 700; }
+  .pile { font-size: 24px; line-height: 1.15; text-align: center; word-break: break-all; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); }
+  .pile .empty { font-size: 12px; color: #5a3517; text-shadow: none; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; }
   .chip { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid #7a4e2a; border-radius: 999px; background: #fff6e5; color: #3b2a1a; cursor: pointer; }
   .chip:disabled { cursor: default; opacity: .85; }
-  .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .actions { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
   button.act { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 8px; border: 1px solid #7a4e2a; background: #fffaf0; cursor: pointer; }
   button.act.primary { background: #4c9a52; border-color: #2f6e35; color: #fff; font-weight: 700; }
   button.act:disabled { opacity: .45; cursor: default; }
@@ -44,7 +72,8 @@
   .food .e { font-size: 26px; line-height: 1.1; }
   .food .n { font-size: 12px; font-weight: 700; }
   .food .s { font-size: 10px; color: #6b5640; }
-  .day { margin-top: 12px; padding: 10px 12px; background: #fffaf0; border: 1px solid #e3d3b5; border-radius: 10px; font-size: 13px; }
+  .foot-wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 24px; }
+  .day { margin-top: 4px; padding: 10px 12px; background: #fffaf0; border: 1px solid #e3d3b5; border-radius: 10px; font-size: 13px; }
   .bar { height: 8px; background: #eadfc9; border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
   .bar i { display: block; height: 100%; background: #4c9a52; }
   .bar i.over { background: #d2603a; }
@@ -61,10 +90,12 @@
   <section id="meals" aria-label="식단 볼"></section>
   <section>
     <div class="shelf" id="shelf" aria-label="음식 선반"></div>
-    <div class="day" id="day"></div>
-    <p class="note">영양값은 1회 제공량 기준 참고용 추정치이며 의학적 조언이 아닙니다. 입력한 내용은 이 화면 밖으로 보내거나 저장하지 않습니다.</p>
   </section>
 </main>
+<footer class="foot-wrap">
+  <div class="day" id="day"></div>
+  <p class="note">영양값은 1회 제공량 기준 참고용 추정치이며 의학적 조언이 아닙니다. 입력한 내용은 이 화면 밖으로 보내거나 저장하지 않습니다.</p>
+</footer>
 
 <script id="diet-logic">
 /*
@@ -473,10 +504,11 @@
     wrap.appendChild(label);
 
     var bowl = el('div', 'bowl');
+    var opening = el('div', 'opening');
     var pile = el('div', 'pile');
     var ids = Object.keys(meal.items);
     if (!ids.length) {
-      pile.appendChild(el('span', 'empty', '오른쪽 선반에서 음식을 눌러 담아 보세요'));
+      pile.appendChild(el('span', 'empty', '선반에서 음식을 눌러 담기'));
     } else {
       var text = '';
       ids.forEach(function (id) {
@@ -485,7 +517,11 @@
       });
       pile.textContent = text;
     }
-    bowl.appendChild(pile);
+    opening.appendChild(pile);
+    bowl.appendChild(opening);
+    bowl.appendChild(el('div', 'belly'));
+    bowl.appendChild(el('div', 'foot'));
+    wrap.appendChild(bowl);
 
     var chips = el('div', 'chips');
     ids.forEach(function (id) {
@@ -497,7 +533,7 @@
       chip.addEventListener('click', function (e) { e.stopPropagation(); update(D.removeFood(state, m.id, id)); });
       chips.appendChild(chip);
     });
-    bowl.appendChild(chips);
+    wrap.appendChild(chips);
 
     var actions = el('div', 'actions');
     if (meal.done) {
@@ -517,8 +553,7 @@
       actions.appendChild(done);
       actions.appendChild(empty);
     }
-    bowl.appendChild(actions);
-    wrap.appendChild(bowl);
+    wrap.appendChild(actions);
 
     if (meal.done) {
       var t = D.mealTotals(meal);
