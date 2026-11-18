@@ -66,7 +66,7 @@ test('eval·동적 코드 실행을 쓰지 않는다', () => {
   assert.doesNotMatch(code, /\beval\s*\(|new\s+Function\s*\(|setTimeout\s*\(\s*["'`]|document\.write/);
 });
 
-test('결과는 textContent로만 그린다 (innerHTML 금지)', () => {
+test('화면은 textContent·createElement로만 그린다 (innerHTML 금지)', () => {
   assert.doesNotMatch(code, /innerHTML|outerHTML|insertAdjacentHTML/);
 });
 
@@ -83,7 +83,7 @@ test('외부 연결을 막는 CSP가 있다', () => {
   assert.doesNotMatch(csp, /https?:|\*|data:|blob:|ws:|wss:/);
 });
 
-test('계산 로직 블록은 화면·브라우저 요소를 쓰지 않는다', () => {
+test('규칙 로직 블록은 화면·브라우저 요소를 쓰지 않는다', () => {
   const logic = extractLogicSource(html)
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
