@@ -2,10 +2,126 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 이 페이지는 어떤 외부 주소에도 연결하지 못하게 막아 둔다. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>오목 10×10</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafaf9;
+    --fg: #1c1917;
+    --muted: #57534e;
+    --line: #d6d3d1;
+    --field: #ffffff;
+    --accent: #0f766e;
+    --board: #e3b970;
+    --grid: #4a3418;
+    --win: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917;
+      --fg: #f5f5f4;
+      --muted: #a8a29e;
+      --line: #44403c;
+      --field: #23201e;
+      --accent: #5eead4;
+      --board: #c9a05a;
+      --grid: #3b2a14;
+      --win: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 12px 40px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 600px; margin: 0 auto; text-align: center; }
+  h1 { font-size: 1.4rem; margin: 0 0 8px; }
+  #status { margin: 0 0 12px; min-height: 1.6em; font-size: 1.05rem; font-weight: 600; }
+  #status.over { color: var(--accent); }
+  .actions { margin: 14px 0 0; display: flex; gap: 8px; justify-content: center; }
+  button.action {
+    padding: 7px 16px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--field);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  button.action:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  .help { margin: 16px 0 0; font-size: 0.85rem; color: var(--muted); }
+
+  /* 판: 칸(교차점) 100개를 격자로 깔고, 칸마다 가로·세로 선을 그린다. */
+  #board {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    width: min(94vw, 560px);
+    aspect-ratio: 1;
+    margin: 0 auto;
+    padding: 2px;
+    background: var(--board);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+  .cell {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cell::before, .cell::after { content: ""; position: absolute; background: var(--grid); }
+  .cell::before { left: 0; right: 0; top: calc(50% - 0.5px); height: 1px; }
+  .cell::after { top: 0; bottom: 0; left: calc(50% - 0.5px); width: 1px; }
+  .cell.c0::before { left: 50%; }
+  .cell.c9::before { right: 50%; }
+  .cell.r0::after { top: 50%; }
+  .cell.r9::after { bottom: 50%; }
+  .cell.empty:hover { background: rgba(255, 255, 255, 0.25); }
+  .cell.locked { cursor: default; }
+  .cell:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 2; }
+
+  .stone {
+    position: absolute;
+    inset: 9%;
+    border-radius: 50%;
+    z-index: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+  .stone.b { background: radial-gradient(circle at 35% 30%, #6b6b6b, #0a0a0a 65%); }
+  .stone.w { background: radial-gradient(circle at 35% 30%, #ffffff, #cfcfcf 70%); }
+  .cell.last .stone::after {
+    content: "";
+    position: absolute;
+    inset: 36%;
+    border-radius: 50%;
+    background: var(--win);
+  }
+  .cell.win .stone { outline: 3px solid var(--win); outline-offset: 1px; }
+</style>
 </head>
 <body>
-<!-- 화면은 다음 커밋에서 추가한다. -->
+<main>
+  <h1>오목 10×10</h1>
+  <p id="status" role="status" aria-live="polite"></p>
+  <div id="board" role="group" aria-label="오목판 10행 10열"></div>
+  <div class="actions">
+    <button type="button" class="action" id="undo">한 수 무르기</button>
+    <button type="button" class="action" id="restart">새 게임</button>
+  </div>
+  <p class="help">흑이 먼저 둡니다. 가로·세로·대각선으로 같은 색 돌 다섯 개 이상을 이으면 이깁니다. 방향키로 칸을 옮기고 Enter 또는 Space로 둘 수 있습니다.</p>
+  <noscript><p>이 게임은 자바스크립트가 필요합니다.</p></noscript>
+</main>
 
 <script id="omok-logic">
 /*
@@ -161,6 +277,120 @@
     findWinLine: findWinLine
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+
+<script id="omok-ui">
+/* 화면: 판을 그리고 클릭·키보드 입력을 Omok에 넘긴다. 규칙은 판단하지 않는다. */
+(function () {
+  'use strict';
+
+  var SIZE = 10;
+  var COLOR_NAME = { 0: '비어 있음', 1: '흑돌', 2: '백돌' };
+  var TURN_NAME = { 1: '흑', 2: '백' };
+
+  var boardEl = document.getElementById('board');
+  var statusEl = document.getElementById('status');
+  var undoButton = document.getElementById('undo');
+  var restartButton = document.getElementById('restart');
+
+  var game = Omok.newGame(SIZE);
+  var cells = []; // cells[행][열] = <button>
+
+  function buildBoard() {
+    for (var r = 0; r < SIZE; r++) {
+      cells.push([]);
+      for (var c = 0; c < SIZE; c++) {
+        var cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'cell r' + r + ' c' + c;
+        cell.setAttribute('data-r', String(r));
+        cell.setAttribute('data-c', String(c));
+        boardEl.appendChild(cell);
+        cells[r].push(cell);
+      }
+    }
+  }
+
+  function winSet(state) {
+    var set = {};
+    if (state.winLine) {
+      state.winLine.forEach(function (p) { set[p[0] + ',' + p[1]] = true; });
+    }
+    return set;
+  }
+
+  function render() {
+    var over = game.winner !== 0 || game.draw;
+    var last = game.moves.length > 0 ? game.moves[game.moves.length - 1] : null;
+    var wins = winSet(game);
+
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var cell = cells[r][c];
+        var color = game.board[r][c];
+        var classes = 'cell r' + r + ' c' + c;
+        if (color === Omok.EMPTY) classes += ' empty';
+        if (color !== Omok.EMPTY || over) classes += ' locked';
+        if (last && last[0] === r && last[1] === c) classes += ' last';
+        if (wins[r + ',' + c]) classes += ' win';
+        cell.className = classes;
+
+        cell.textContent = '';
+        if (color !== Omok.EMPTY) {
+          var stone = document.createElement('span');
+          stone.className = 'stone ' + (color === Omok.BLACK ? 'b' : 'w');
+          cell.appendChild(stone);
+        }
+        cell.setAttribute('aria-label', (r + 1) + '행 ' + (c + 1) + '열, ' + COLOR_NAME[color]);
+        // disabled를 쓰면 키보드 초점을 잃으므로 aria-disabled만 쓴다.
+        cell.setAttribute('aria-disabled', (color !== Omok.EMPTY || over) ? 'true' : 'false');
+      }
+    }
+
+    if (game.winner !== 0) {
+      statusEl.textContent = TURN_NAME[game.winner] + ' 승리! (' + game.moves.length + '수)';
+    } else if (game.draw) {
+      statusEl.textContent = '무승부 — 판이 가득 찼습니다.';
+    } else {
+      statusEl.textContent = TURN_NAME[game.turn] + ' 차례 (' + (game.moves.length + 1) + '수)';
+    }
+    statusEl.className = over ? 'over' : '';
+    undoButton.disabled = game.moves.length === 0;
+  }
+
+  function onCellClick(event) {
+    var cell = event.target.closest ? event.target.closest('.cell') : null;
+    if (!cell) return;
+    var result = Omok.place(game, Number(cell.getAttribute('data-r')), Number(cell.getAttribute('data-c')));
+    if (!result.ok) return;
+    game = result.state;
+    render();
+  }
+
+  function onBoardKeydown(event) {
+    var delta = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
+    var cell = event.target.closest ? event.target.closest('.cell') : null;
+    if (!delta || !cell) return;
+    var r = Number(cell.getAttribute('data-r')) + delta[0];
+    var c = Number(cell.getAttribute('data-c')) + delta[1];
+    if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return;
+    event.preventDefault();
+    cells[r][c].focus();
+  }
+
+  buildBoard();
+  boardEl.addEventListener('click', onCellClick);
+  boardEl.addEventListener('keydown', onBoardKeydown);
+  undoButton.addEventListener('click', function () {
+    game = Omok.undo(game);
+    render();
+  });
+  restartButton.addEventListener('click', function () {
+    game = Omok.newGame(SIZE);
+    render();
+  });
+  render();
+})();
 </script>
 </body>
 </html>
