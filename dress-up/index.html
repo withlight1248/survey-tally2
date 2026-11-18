@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 이 페이지는 어떤 외부 주소에도 연결하지 못하게 막아 둔다. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>옷입히기</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fdf6f9;
+    --fg: #2a1f25;
+    --muted: #6f5b66;
+    --line: #ead3de;
+    --card: #ffffff;
+    --accent: #d6407f;
+    --stage-top: #ffeaf3;
+    --stage-bottom: #f8d7e6;
+    --floor: rgba(120, 60, 90, 0.18);
+    --tile: #fff7fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1820;
+      --fg: #f6eaf0;
+      --muted: #b9a2ae;
+      --line: #4a3744;
+      --card: #2a2029;
+      --accent: #ff7fb0;
+      --stage-top: #3a2b38;
+      --stage-bottom: #4a3446;
+      --floor: rgba(0, 0, 0, 0.3);
+      --tile: #33262f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 14px 40px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; text-align: center; }
+  #status { margin: 0 0 16px; text-align: center; color: var(--muted); }
+  #status strong { color: var(--accent); }
+
+  /* 왼쪽 무대, 오른쪽 진열대. 좁은 화면에서는 위아래로 쌓는다. */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .stage {
+    background: linear-gradient(180deg, var(--stage-top), var(--stage-bottom));
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+  }
+  .stage svg { display: block; width: min(100%, 340px); height: auto; }
+
+  .shelf { display: flex; flex-direction: column; gap: 14px; }
+  .shelf-group {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px 12px;
+  }
+  .shelf-group h2 { margin: 0 0 8px; font-size: 1rem; }
+  .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+
+  button.item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px 8px;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    background: var(--tile);
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    cursor: pointer;
+  }
+  button.item:hover { border-color: var(--accent); }
+  button.item[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; font-weight: 600; }
+  button.item svg { width: 100%; height: 84px; display: block; }
+  button.item.dress svg { height: 112px; }
+
+  .actions { margin: 16px 0 0; text-align: center; }
+  button.reset {
+    padding: 8px 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>옷입히기</h1>
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <div class="layout">
+    <div class="stage" id="stage"></div>
+    <div class="shelf" id="shelf" role="group" aria-label="옷 진열대"></div>
+  </div>
+
+  <p class="actions"><button type="button" class="reset" id="reset">기본 차림으로</button></p>
+  <noscript><p>이 게임은 자바스크립트가 필요합니다.</p></noscript>
+</main>
+
+<script id="outfit-logic">
+/*
+ * 옷 입기 규칙. 화면을 전혀 쓰지 않는 순수 함수만 둔다.
+ * 시험(tests/)은 이 블록만 꺼내 Node에서 실행한다.
+ *
+ * 상태(outfit): { dress: 옷 아이디 또는 null, top: ..., bottom: ... }
+ * 상태는 바꾸지 않고, 입거나 벗을 때마다 새 상태를 돌려준다.
+ */
+(function (root) {
+  'use strict';
+
+  var CATEGORIES = [
+    { id: 'dress', name: '드레스' },
+    { id: 'top', name: '상의' },
+    { id: 'bottom', name: '하의' }
+  ];
+
+  var ITEMS = [
+    { id: 'dress-pink', category: 'dress', name: '분홍 원피스' },
+    { id: 'dress-blue', category: 'dress', name: '파란 롱드레스' },
+    { id: 'dress-yellow', category: 'dress', name: '노란 물방울 원피스' },
+    { id: 'dress-purple', category: 'dress', name: '보라 파티 드레스' },
+    { id: 'top-white', category: 'top', name: '흰 티셔츠' },
+    { id: 'top-pink', category: 'top', name: '분홍 블라우스' },
+    { id: 'top-yellow', category: 'top', name: '노란 줄무늬 니트' },
+    { id: 'top-blue', category: 'top', name: '파란 민소매' },
+    { id: 'bottom-jeans', category: 'bottom', name: '청바지' },
+    { id: 'bottom-red', category: 'bottom', name: '빨간 치마' },
+    { id: 'bottom-pleat', category: 'bottom', name: '검정 플리츠 스커트' },
+    { id: 'bottom-shorts', category: 'bottom', name: '초록 반바지' }
+  ];
+
+  function findItem(id) {
+    for (var i = 0; i < ITEMS.length; i++) {
+      if (ITEMS[i].id === id) return ITEMS[i];
+    }
+    return null;
+  }
+
+  function itemsOf(categoryId) {
+    return ITEMS.filter(function (item) { return item.category === categoryId; });
+  }
+
+  /** 아무것도 안 입은 기본 상태. */
+  function emptyOutfit() {
+    return { dress: null, top: null, bottom: null };
+  }
+
+  /**
+   * 옷을 입히거나(이미 입은 옷이면) 벗긴다. 새 상태를 돌려준다.
+   * - 드레스를 입으면 상의·하의가 벗겨진다.
+   * - 상의나 하의를 입으면 드레스가 벗겨진다. 상의와 하의는 함께 입을 수 있다.
+   * - 모르는 아이디는 무시하고 원래 상태를 그대로 돌려준다.
+   */
+  function wear(outfit, itemId) {
+    var item = findItem(itemId);
+    if (!item) return outfit;
+
+    var next = { dress: outfit.dress, top: outfit.top, bottom: outfit.bottom };
+    if (outfit[item.category] === item.id) {
+      next[item.category] = null;
+      return next;
+    }
+    next[item.category] = item.id;
+    if (item.category === 'dress') {
+      next.top = null;
+      next.bottom = null;
+    } else {
+      next.dress = null;
+    }
+    return next;
+  }
+
+  /** 입은 옷 이름을 쉼표로 이은 문장. 아무것도 없으면 '기본 차림'. */
+  function describe(outfit) {
+    var names = [];
+    CATEGORIES.forEach(function (cat) {
+      var item = outfit[cat.id] ? findItem(outfit[cat.id]) : null;
+      if (item) names.push(item.name);
+    });
+    return names.length === 0 ? '기본 차림' : names.join(', ');
+  }
+
+  root.Outfit = {
+    CATEGORIES: CATEGORIES,
+    ITEMS: ITEMS,
+    findItem: findItem,
+    itemsOf: itemsOf,
+    emptyOutfit: emptyOutfit,
+    wear: wear,
+    describe: describe
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+
+<script id="dress-art">
+/*
+ * 그림 데이터. 캐릭터와 옷을 도형 목록으로 적어 둔다. 화면을 쓰지 않는 순수 데이터.
+ * 도형은 [태그, 속성] 쌍이고, 좌표는 가로 300 × 세로 520 그림판 기준이다.
+ * 화면 블록이 이 목록으로 SVG를 만든다.
+ */
+(function (root) {
+  'use strict';
+
+  var SKIN = '#f6d2b8';
+  var LINE = 'rgba(70, 35, 25, 0.30)';
+  var HAIR = '#5b3a29';
+  var WHITE = '#fbfbfb';
+
+  function merge(base, extra) {
+    if (extra) {
+      for (var key in extra) base[key] = extra[key];
+    }
+    return base;
+  }
+  function path(d, fill, extra) {
+    return ['path', merge({ d: d, fill: fill, stroke: LINE, 'stroke-width': 1.5, 'stroke-linejoin': 'round' }, extra)];
+  }
+  function line(x1, y1, x2, y2, stroke, width) {
+    return ['line', { x1: x1, y1: y1, x2: x2, y2: y2, stroke: stroke, 'stroke-width': width, 'stroke-linecap': 'round' }];
+  }
+  function circle(cx, cy, r, fill, extra) {
+    return ['circle', merge({ cx: cx, cy: cy, r: r, fill: fill }, extra)];
+  }
+  function ellipse(cx, cy, rx, ry, fill, extra) {
+    return ['ellipse', merge({ cx: cx, cy: cy, rx: rx, ry: ry, fill: fill }, extra)];
+  }
+  function rect(x, y, width, height, fill, extra) {
+    return ['rect', merge({ x: x, y: y, width: width, height: height, fill: fill }, extra)];
+  }
+
+  /* ---------- 캐릭터 ---------- */
+  var character = {
+    hairBack: [
+      path('M104 84 Q94 190 114 240 L186 240 Q206 190 196 84 Z', HAIR)
+    ],
+    body: [
+      line(104, 170, 84, 300, SKIN, 18),
+      line(196, 170, 216, 300, SKIN, 18),
+      line(128, 330, 126, 470, SKIN, 26),
+      line(172, 330, 174, 470, SKIN, 26),
+      ellipse(122, 483, 19, 9, '#b04a5a'),
+      ellipse(178, 483, 19, 9, '#b04a5a'),
+      circle(83, 306, 10, SKIN),
+      circle(217, 306, 10, SKIN),
+      rect(139, 125, 22, 46, SKIN, { rx: 8 }),
+      path('M104 166 Q150 154 196 166 L190 270 Q192 300 196 338 L104 338 Q108 300 110 270 Z', SKIN)
+    ],
+    under: [
+      path('M112 178 Q150 194 188 178 L190 268 L110 268 Z', WHITE),
+      path('M120 182 L125 160 L133 160 L130 186 Z', WHITE),
+      path('M180 182 L175 160 L167 160 L170 186 Z', WHITE),
+      path('M108 290 H192 L198 338 Q150 350 102 338 Z', WHITE)
+    ],
+    head: [
+      ellipse(111, 102, 5, 9, SKIN, { stroke: LINE, 'stroke-width': 1.5 }),
+      ellipse(189, 102, 5, 9, SKIN, { stroke: LINE, 'stroke-width': 1.5 }),
+      ellipse(150, 96, 39, 43, SKIN, { stroke: LINE, 'stroke-width': 1.5 }),
+      ellipse(137, 100, 4.5, 6.5, '#3a2a2a'),
+      ellipse(163, 100, 4.5, 6.5, '#3a2a2a'),
+      circle(138.5, 97.5, 1.7, '#ffffff'),
+      circle(164.5, 97.5, 1.7, '#ffffff'),
+      ellipse(128, 114, 7, 4, '#ff9fb2', { opacity: 0.55 }),
+      ellipse(172, 114, 7, 4, '#ff9fb2', { opacity: 0.55 }),
+      ['path', { d: 'M131 89 Q137 85 143 88', fill: 'none', stroke: HAIR, 'stroke-width': 2, 'stroke-linecap': 'round' }],
+      ['path', { d: 'M157 88 Q163 85 169 89', fill: 'none', stroke: HAIR, 'stroke-width': 2, 'stroke-linecap': 'round' }],
+      ['path', { d: 'M144 119 Q150 125 156 119', fill: 'none', stroke: '#b85c5c', 'stroke-width': 2, 'stroke-linecap': 'round' }]
+    ],
+    hairFront: [
+      path('M109 100 Q104 48 150 47 Q196 48 191 100 Q188 76 170 68 Q160 82 144 72 Q122 76 109 100 Z', HAIR),
+      path('M109 98 Q103 136 112 172 L121 172 Q113 136 119 104 Z', HAIR),
+      path('M191 98 Q197 136 188 172 L179 172 Q187 136 181 104 Z', HAIR)
+    ]
+  };
+
+  /* ---------- 옷 ---------- */
+  function topBody(fill) {
+    return path('M106 164 Q128 160 134 158 Q150 176 166 158 Q172 160 194 164 L190 286 Q150 294 110 286 Z', fill);
+  }
+  function shortSleeves(fill) {
+    return [
+      path('M94 166 L117 164 L110 207 L88 203 Z', fill),
+      path('M206 166 L183 164 L190 207 L212 203 Z', fill)
+    ];
+  }
+  function longSleeves(fill) {
+    return [
+      path('M94 166 L117 164 L97 287 L75 283 Z', fill),
+      path('M206 166 L183 164 L203 287 L225 283 Z', fill)
+    ];
+  }
+  function waistband(fill) {
+    return rect(110, 272, 80, 8, fill);
+  }
+
+  var garments = {
+    /* 드레스 */
+    'dress-pink': [
+      path('M112 178 Q150 194 188 178 L192 268 L228 432 Q150 450 72 432 L108 268 Z', '#f9b5cf'),
+      path('M118 184 L124 160 L135 160 L131 192 Z', '#f9b5cf'),
+      path('M182 184 L176 160 L165 160 L169 192 Z', '#f9b5cf'),
+      rect(106, 262, 88, 10, '#e0749a'),
+      path('M150 267 L134 258 L134 276 Z', '#e0749a'),
+      path('M150 267 L166 258 L166 276 Z', '#e0749a'),
+      circle(150, 267, 4, '#c65582')
+    ],
+    'dress-blue': [
+      path('M108 168 Q128 162 134 160 Q150 178 166 160 Q172 162 192 168 L190 268 L240 470 Q150 492 60 470 L110 268 Z', '#7aa7e8'),
+      ellipse(98, 186, 16, 14, '#7aa7e8', { stroke: LINE, 'stroke-width': 1.5 }),
+      ellipse(202, 186, 16, 14, '#7aa7e8', { stroke: LINE, 'stroke-width': 1.5 }),
+      rect(109, 262, 82, 9, '#4b74c4'),
+      line(150, 275, 150, 470, '#6a97dc', 2),
+      line(130, 275, 112, 470, '#6a97dc', 2),
+      line(170, 275, 188, 470, '#6a97dc', 2)
+    ],
+    'dress-yellow': [
+      path('M106 166 Q128 160 134 158 Q150 176 166 158 Q172 160 194 166 L192 266 L218 382 Q150 398 82 382 L108 266 Z', '#ffe07a'),
+      path('M94 166 L117 164 L110 207 L88 203 Z', '#ffe07a'),
+      path('M206 166 L183 164 L190 207 L212 203 Z', '#ffe07a'),
+      circle(125, 214, 4, '#ffffff', { stroke: 'none' }),
+      circle(172, 206, 4, '#ffffff', { stroke: 'none' }),
+      circle(150, 250, 4, '#ffffff', { stroke: 'none' }),
+      circle(118, 296, 4, '#ffffff', { stroke: 'none' }),
+      circle(184, 300, 4, '#ffffff', { stroke: 'none' }),
+      circle(148, 330, 4, '#ffffff', { stroke: 'none' }),
+      circle(104, 352, 4, '#ffffff', { stroke: 'none' }),
+      circle(196, 350, 4, '#ffffff', { stroke: 'none' }),
+      circle(160, 372, 4, '#ffffff', { stroke: 'none' }),
+      circle(128, 366, 4, '#ffffff', { stroke: 'none' }),
+      circle(140, 285, 4, '#ffffff', { stroke: 'none' })
+    ],
+    'dress-purple': [
+      path('M112 178 Q150 194 188 178 L190 262 L236 414 Q150 438 64 414 L110 262 Z', '#b39ddb'),
+      path('M118 184 L123 160 L134 160 L131 190 Z', '#b39ddb'),
+      path('M182 184 L177 160 L166 160 L169 190 Z', '#b39ddb'),
+      rect(108, 258, 84, 12, '#7e57c2'),
+      circle(150, 264, 6, '#ffd54f', { stroke: 'none' }),
+      circle(112, 380, 3.5, '#ffd54f', { stroke: 'none' }),
+      circle(150, 395, 3.5, '#ffd54f', { stroke: 'none' }),
+      circle(188, 380, 3.5, '#ffd54f', { stroke: 'none' }),
+      circle(130, 330, 3.5, '#ffd54f', { stroke: 'none' }),
+      circle(172, 330, 3.5, '#ffd54f', { stroke: 'none' }),
+      circle(150, 300, 3.5, '#ffd54f', { stroke: 'none' })
+    ],
+
+    /* 상의 */
+    'top-white': [topBody('#ffffff')].concat(shortSleeves('#ffffff')),
+    'top-pink': [topBody('#f7a8c4')].concat(longSleeves('#f7a8c4'), [
+      path('M150 174 L136 166 L136 182 Z', '#e0749a'),
+      path('M150 174 L164 166 L164 182 Z', '#e0749a'),
+      circle(150, 174, 4, '#c65582')
+    ]),
+    'top-yellow': [topBody('#f6d365')].concat(longSleeves('#f6d365'), [
+      line(111, 200, 189, 200, '#e8b93f', 4),
+      line(111, 220, 189, 220, '#e8b93f', 4),
+      line(111, 240, 189, 240, '#e8b93f', 4),
+      line(111, 260, 189, 260, '#e8b93f', 4)
+    ]),
+    'top-blue': [
+      path('M112 178 Q150 194 188 178 L190 286 Q150 294 110 286 Z', '#6fb3e8'),
+      path('M118 184 L124 160 L135 160 L131 192 Z', '#6fb3e8'),
+      path('M182 184 L176 160 L165 160 L169 192 Z', '#6fb3e8')
+    ],
+
+    /* 하의 */
+    'bottom-jeans': [
+      path('M104 336 H149 L141 468 H113 Z', '#4a6fa5'),
+      path('M151 336 H196 L187 468 H159 Z', '#4a6fa5'),
+      path('M110 272 H190 L198 340 H102 Z', '#4a6fa5'),
+      waistband('#375580'),
+      line(150, 282, 150, 340, '#375580', 2)
+    ],
+    'bottom-red': [
+      path('M110 272 H190 L214 402 Q150 416 86 402 Z', '#d94b5b'),
+      waistband('#b13445')
+    ],
+    'bottom-pleat': [
+      path('M110 272 H190 L206 362 Q150 374 94 362 Z', '#2e2e3a'),
+      waistband('#1f1f29'),
+      line(120, 282, 112, 366, '#4a4a5c', 2),
+      line(135, 282, 131, 370, '#4a4a5c', 2),
+      line(150, 282, 150, 372, '#4a4a5c', 2),
+      line(165, 282, 169, 370, '#4a4a5c', 2),
+      line(180, 282, 188, 366, '#4a4a5c', 2)
+    ],
+    'bottom-shorts': [
+      path('M104 336 H149 L146 402 H108 Z', '#7cc68a'),
+      path('M151 336 H196 L192 402 H154 Z', '#7cc68a'),
+      path('M110 272 H190 L198 340 H102 Z', '#7cc68a'),
+      waistband('#58a768')
+    ]
+  };
+
+  root.DressArt = {
+    viewBox: '0 0 300 520',
+    character: character,
+    garments: garments,
+    // 진열대 작은 그림에서 종류별로 보여 줄 영역
+    previewBox: {
+      dress: '50 150 200 350',
+      top: '66 150 168 150',
+      bottom: '62 264 176 216'
+    }
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+
+<script id="dress-ui">
+/* 화면: 그림 데이터로 SVG를 만들고, 진열대 클릭을 Outfit에 넘긴다. 규칙은 판단하지 않는다. */
+(function () {
+  'use strict';
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  var stageEl = document.getElementById('stage');
+  var shelfEl = document.getElementById('shelf');
+  var statusEl = document.getElementById('status');
+  var resetButton = document.getElementById('reset');
+
+  var outfit = Outfit.emptyOutfit();
+  var layers = {};      // 종류 → 옷이 그려지는 <g>
+  var buttons = {};     // 옷 아이디 → 진열대 <button>
+
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS(SVG_NS, tag);
+    if (attrs) {
+      for (var name in attrs) node.setAttribute(name, String(attrs[name]));
+    }
+    return node;
+  }
+
+  function shapesInto(parent, shapes) {
+    shapes.forEach(function (shape) {
+      parent.appendChild(svgEl(shape[0], shape[1]));
+    });
+  }
+
+  function layer(parent, shapes) {
+    var g = svgEl('g');
+    if (shapes) shapesInto(g, shapes);
+    parent.appendChild(g);
+    return g;
+  }
+
+  /* ---------- 무대(캐릭터) ---------- */
+  function buildStage() {
+    var svg = svgEl('svg', { viewBox: DressArt.viewBox, role: 'img', 'aria-label': '옷을 입힐 여자 캐릭터' });
+    svg.appendChild(svgEl('ellipse', { cx: 150, cy: 494, rx: 95, ry: 12, fill: 'rgba(120, 60, 90, 0.18)' }));
+    layer(svg, DressArt.character.hairBack);
+    layer(svg, DressArt.character.body);
+    layer(svg, DressArt.character.under);
+    // 입히는 순서: 하의 → 상의 → 드레스 (나중에 그린 것이 위에 덮인다)
+    layers.bottom = layer(svg);
+    layers.top = layer(svg);
+    layers.dress = layer(svg);
+    layer(svg, DressArt.character.head);
+    layer(svg, DressArt.character.hairFront);
+    stageEl.appendChild(svg);
+  }
+
+  /* ---------- 진열대 ---------- */
+  function buildPreview(item) {
+    var svg = svgEl('svg', {
+      viewBox: DressArt.previewBox[item.category],
+      'aria-hidden': 'true',
+      focusable: 'false',
+      preserveAspectRatio: 'xMidYMid meet'
+    });
+    shapesInto(svg, DressArt.garments[item.id]);
+    return svg;
+  }
+
+  function buildShelf() {
+    Outfit.CATEGORIES.forEach(function (category) {
+      var group = document.createElement('section');
+      group.className = 'shelf-group';
+      var title = document.createElement('h2');
+      title.textContent = category.name;
+      group.appendChild(title);
+
+      var grid = document.createElement('div');
+      grid.className = 'items';
+      Outfit.itemsOf(category.id).forEach(function (item) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'item ' + category.id;
+        button.setAttribute('data-id', item.id);
+        button.setAttribute('aria-pressed', 'false');
+        button.appendChild(buildPreview(item));
+        var label = document.createElement('span');
+        label.textContent = item.name;
+        button.appendChild(label);
+        grid.appendChild(button);
+        buttons[item.id] = button;
+      });
+      group.appendChild(grid);
+      shelfEl.appendChild(group);
+    });
+  }
+
+  /* ---------- 다시 그리기 ---------- */
+  function render() {
+    Outfit.CATEGORIES.forEach(function (category) {
+      var g = layers[category.id];
+      while (g.firstChild) g.removeChild(g.firstChild);
+      var id = outfit[category.id];
+      if (id) shapesInto(g, DressArt.garments[id]);
+    });
+
+    Outfit.ITEMS.forEach(function (item) {
+      var worn = outfit[item.category] === item.id;
+      buttons[item.id].setAttribute('aria-pressed', worn ? 'true' : 'false');
+    });
+
+    statusEl.textContent = '';
+    var label = document.createElement('span');
+    label.textContent = '입은 옷: ';
+    var names = document.createElement('strong');
+    names.textContent = Outfit.describe(outfit);
+    statusEl.appendChild(label);
+    statusEl.appendChild(names);
+  }
+
+  shelfEl.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button.item') : null;
+    if (!button) return;
+    outfit = Outfit.wear(outfit, button.getAttribute('data-id'));
+    render();
+  });
+  resetButton.addEventListener('click', function () {
+    outfit = Outfit.emptyOutfit();
+    render();
+  });
+
+  buildStage();
+  buildShelf();
+  render();
+})();
+</script>
+</body>
+</html>

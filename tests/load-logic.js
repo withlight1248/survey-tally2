@@ -25,4 +25,15 @@ function loadLogic() {
   return sandbox.Omok;
 }
 
-module.exports = { loadLogic, readIndexHtml, extractLogicSource, INDEX_PATH };
+// 저장소 안의 다른 페이지(예: dress-up/index.html)를 읽고 블록을 꺼내는 공통 도구
+function readPage(relativePath) {
+  return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+}
+
+function extractBlock(html, id, label) {
+  const m = html.match(new RegExp('<script id="' + id + '">([\\s\\S]*?)</script>'));
+  if (!m) throw new Error((label || 'index.html') + '에서 <script id="' + id + '"> 블록을 찾지 못했다');
+  return m[1];
+}
+
+module.exports = { loadLogic, readIndexHtml, extractLogicSource, INDEX_PATH, readPage, extractBlock };
